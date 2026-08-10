@@ -189,9 +189,15 @@ function WhatsAppPage() {
       criteria_event: "The reaction started two days after taking the medicine.",
     };
     await sendMessage(missing.map((m) => replies[m.key]).join(" "), "in");
-    const patch: Record<string, boolean> = {};
-    for (const m of missing) patch[m.key] = true;
-    await supabase.from("whatsapp_threads").update(patch).eq("id", active.id);
+    await supabase
+      .from("whatsapp_threads")
+      .update({
+        criteria_reporter: active.criteria_reporter || missing.some((m) => m.key === "criteria_reporter"),
+        criteria_patient: active.criteria_patient || missing.some((m) => m.key === "criteria_patient"),
+        criteria_product: active.criteria_product || missing.some((m) => m.key === "criteria_product"),
+        criteria_event: active.criteria_event || missing.some((m) => m.key === "criteria_event"),
+      })
+      .eq("id", active.id);
     await logAudit({
       orgId: session.orgId,
       entity: "whatsapp_thread",
