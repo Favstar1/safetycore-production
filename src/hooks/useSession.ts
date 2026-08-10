@@ -35,12 +35,12 @@ async function loadSession(): Promise<SessionProfile | null> {
 
 export function useSession() {
   const queryClient = useQueryClient();
-  const query = useQuery({ queryKey: ["session"], queryFn: loadSession, staleTime: 60_000 });
+  const query = useQuery({ queryKey: ["session"], queryFn: loadSession, staleTime: 0 });
 
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange((event) => {
       if (event !== "SIGNED_IN" && event !== "SIGNED_OUT" && event !== "USER_UPDATED") return;
-      queryClient.invalidateQueries({ queryKey: ["session"] });
+      queryClient.removeQueries({ queryKey: ["session"] });
     });
     return () => sub.subscription.unsubscribe();
   }, [queryClient]);

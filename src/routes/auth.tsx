@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -29,12 +29,6 @@ function AuthPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) navigate({ to: "/dashboard", replace: true });
-    });
-  }, [navigate]);
-
   async function signIn(withEmail: string, withPassword: string) {
     setBusy(true);
     setError(null);
@@ -42,7 +36,7 @@ function AuthPage() {
     await supabase.auth.signOut();
     await queryClient.cancelQueries();
     queryClient.clear();
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email: withEmail,
       password: withPassword,
     });
@@ -51,7 +45,13 @@ function AuthPage() {
       setError(error.message);
       return;
     }
-    await queryClient.invalidateQueries();
+    if (data.user.email?.toLowerCase() !== withEmail.toLowerCase()) {
+      await supabase.auth.signOut();
+      setBusy(false);
+      setError("The selected account could not be activated. Please try again.");
+      return;
+    }
+    queryClient.removeQueries({ queryKey: ["session"] });
     setBusy(false);
     navigate({ to: "/dashboard", replace: true });
   }
@@ -115,9 +115,11 @@ function AuthPage() {
               key={a.email}
               type="button"
               className="signin-account"
+              disabled={busy}
               onClick={() => {
                 setEmail(a.email);
                 setPassword("password123");
+                void signIn(a.email, "password123");
               }}
             >
               <span className="signin-account-role">
