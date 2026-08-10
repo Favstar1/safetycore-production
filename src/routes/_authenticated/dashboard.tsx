@@ -15,20 +15,30 @@ import {
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
     meta: [
-      { title: "Manager Dashboard — SafetyCore" },
+      { title: "Safety Dashboard — SafetyCore" },
       {
         name: "description",
-        content: "Team-wide case load, regulatory compliance clocks and signal oversight.",
+        content:
+          "Case queue, today's actions, regulatory deadlines and signal oversight for the pharmacovigilance team.",
       },
-      { property: "og:title", content: "Manager Dashboard — SafetyCore" },
+      { property: "og:title", content: "Safety Dashboard — SafetyCore" },
       {
         property: "og:description",
-        content: "Team-wide case load, compliance, and signal oversight.",
+        content: "Case load, compliance clocks, and signal oversight.",
       },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
   component: Dashboard,
 });
+
+const NEXT_ACTION: Record<string, string> = {
+  Triage: "Complete MedDRA/WHO-DD coding",
+  Coding: "Submit for medical review",
+  "Medical Review": "Complete medical review",
+  QC: "Complete QC review and release for submission",
+};
 
 function Dashboard() {
   const { data: session } = useSession();
@@ -56,6 +66,11 @@ function Dashboard() {
     queryFn: async () => (await supabase.from("signals").select("*")).data ?? [],
   });
 
+  const { data: waThreads } = useQuery({
+    queryKey: ["wa-threads"],
+    queryFn: async () => (await supabase.from("whatsapp_threads").select("*")).data ?? [],
+  });
+
   const rows = cases ?? [];
   const open = rows.filter((c) => c.status !== "Closed" && c.status !== "Submitted");
   const overdue = open.filter((c) => (daysLeft(c.due_date) ?? 99) < 0);
@@ -65,6 +80,7 @@ function Dashboard() {
   });
   const isField = session?.role === "FIELD_ASSOCIATE";
   const isManager = session?.role === "PV_MANAGER" || session?.role === "ADMIN";
+  const isCoordinator = session?.role === "PV_COORDINATOR";
 
   const monthStart = new Date();
   monthStart.setDate(1);
@@ -73,21 +89,13 @@ function Dashboard() {
     (c) => c.submitted_at && new Date(c.submitted_at) >= monthStart,
   ).length;
   const activeSignals = (signals ?? []).filter((s) => s.status !== "Refuted").length;
-  const serious = rows.filter((c) => c.seriousness === "Serious");
+  const waAwaiting = (waThreads ?? []).filter((t) => t.status === "New").length;
 
   const counts = CASE_STATUSES.map((s) => ({
     status: s,
     n: rows.filter((c) => c.status === s).length,
   }));
   const total = rows.length || 1;
-
-  const myTasks = rows
-    .filter(
-      (c) =>
-        c.status !== "Closed" &&
-        (isField ? c.created_by === session?.userId : c.assigned_to === session?.userId),
-    )
-    .slice(0, 6);
 
   const nameById = new Map((people ?? []).map((p) => [p.id, p.full_name]));
   const workload = (people ?? [])
@@ -111,17 +119,81 @@ function Dashboard() {
     return `${c.patient_sex ?? "U"}, ${c.patient_age ?? "?"}y`;
   }
 
+  // ---- coordinator scope -------------------------------------------------
+  const myCases = rows.filter((c) =>
+    isField ? c.created_by === session?.userId : c.assigned_to === session?.userId,
+  );
+  const myOpen = myCases.filter((c) => c.status !== "Closed" && c.status !== "Submitted");
+  const myDueSoon = myOpen.filter((c) => {
+    const d = daysLeft(c.due_date);
+    return d !== null && d >= 0 && d <= 3;
+  });
+  const myOverdue = myOpen.filter((c) => (daysLeft(c.due_date) ?? 99) < 0);
+  const myQueue = [...myCases].sort((a, b) => (a.due_date ?? "").localeCompare(b.due_date ?? ""));
+  const actionList = myOpen
+    .filter((c) => NEXT_ACTION[c.status])
+    .sort((a, b) => (a.due_date ?? "").localeCompare(b.due_date ?? ""))
+    .slice(0, 6);
+  const myTasks = myOpen.slice(0, 6);
+
+  const caseTable = (list: typeof rows) => (
+    <table>
+      <thead>
+        <tr>
+          <th>Case ID</th>
+          <th>Patient</th>
+          <th>Product</th>
+          <th>MedDRA term</th>
+          <th>Seriousness</th>
+          <th>Status</th>
+          <th>Due (E2B)</th>
+          <th>Assigned</th>
+          <th>Channel</th>
+        </tr>
+      </thead>
+      <tbody>
+        {list.map((c) => (
+          <tr
+            key={c.id}
+            className="rowlink"
+            onClick={() => navigate({ to: "/cases/$caseId", params: { caseId: c.id } })}
+          >
+            <td className="mono">{c.case_number}</td>
+            <td>{patientLabel(c)}</td>
+            <td>{c.product_name}</td>
+            <td>{c.meddra_term ?? "—"}</td>
+            <td>
+              <span className={`badge ${c.seriousness === "Serious" ? "serious" : "nonserious"}`}>
+                {c.seriousness}
+              </span>
+            </td>
+            <td>
+              <span className="st-pill">{c.status}</span>
+            </td>
+            <td className="mono">{c.due_date ?? "—"}</td>
+            <td>{shortName(nameById.get(c.assigned_to ?? "") ?? null)}</td>
+            <td>{c.channel}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+
   return (
     <AppShell
       title={
-        isField ? "My Reports" : isManager ? "Manager Dashboard" : "Safety Operations Dashboard"
+        isField
+          ? "My Reports"
+          : isManager
+            ? "Manager Dashboard"
+            : "My Dashboard"
       }
       subtitle={
         isField
           ? "Reports you have submitted and their current review status"
           : isManager
             ? "Team-wide case load, compliance, and signal oversight."
-            : "Live ICSR pipeline, regulatory clocks and signal activity"
+            : "Your case queue, today's actions, and regulatory deadlines."
       }
       actions={
         <Link to="/intake" className="btn primary">
@@ -129,36 +201,63 @@ function Dashboard() {
         </Link>
       }
     >
-      <div className="kpi-grid">
-        <div className="kpi">
-          <div className="label">{isField ? "My reports" : "Open cases"}</div>
-          <div className="num">
-            {isField ? rows.filter((c) => c.created_by === session?.userId).length : open.length}
+      {isCoordinator ? (
+        <div className="kpi-grid">
+          <div className="kpi">
+            <div className="label">My open cases</div>
+            <div className="num">{myOpen.length}</div>
+            <div className="foot">assigned to {shortName(session?.fullName)}</div>
           </div>
-          <div className="foot">of {rows.length} total in system</div>
-        </div>
-        <div className="kpi">
-          <div className="label">Overdue (E2B clock)</div>
-          <div className={`num${overdue.length ? " warn" : ""}`}>{overdue.length}</div>
-          <div className="foot">
-            {overdue.length ? `${dueSoon.length} more due within 3 days` : "past regulatory due date"}
+          <div className="kpi">
+            <div className="label">Due within 3 days</div>
+            <div className="num">{myDueSoon.length}</div>
+            <div className="foot">regulatory clock closing</div>
           </div>
-        </div>
-        <div className="kpi">
-          <div className="label">Submitted this month</div>
-          <div className="num">{submittedThisMonth}</div>
-          <div className="foot">to regulatory gateway(s)</div>
-        </div>
-        <div className="kpi">
-          <div className="label">{isManager ? "Signals active" : "Serious cases"}</div>
-          <div className="num">{isManager ? activeSignals : serious.length}</div>
-          <div className="foot">
-            {isManager ? "new / under validation" : "15-day expedited clock"}
+          <div className="kpi">
+            <div className="label">Overdue</div>
+            <div className={`num${myOverdue.length ? " warn" : ""}`}>{myOverdue.length}</div>
+            <div className="foot">past E2B due date</div>
+          </div>
+          <div className="kpi">
+            <div className="label">WhatsApp awaiting review</div>
+            <div className="num">{waAwaiting}</div>
+            <div className="foot">new inbound reports</div>
           </div>
         </div>
-      </div>
+      ) : (
+        <div className="kpi-grid">
+          <div className="kpi">
+            <div className="label">{isField ? "My reports" : "Open cases"}</div>
+            <div className="num">{isField ? myCases.length : open.length}</div>
+            <div className="foot">of {rows.length} total in system</div>
+          </div>
+          <div className="kpi">
+            <div className="label">Overdue (E2B clock)</div>
+            <div className={`num${overdue.length ? " warn" : ""}`}>{overdue.length}</div>
+            <div className="foot">
+              {overdue.length
+                ? `${dueSoon.length} more due within 3 days`
+                : "past regulatory due date"}
+            </div>
+          </div>
+          <div className="kpi">
+            <div className="label">Submitted this month</div>
+            <div className="num">{submittedThisMonth}</div>
+            <div className="foot">to regulatory gateway(s)</div>
+          </div>
+          <div className="kpi">
+            <div className="label">{isManager ? "Signals active" : "Serious cases"}</div>
+            <div className="num">
+              {isManager ? activeSignals : rows.filter((c) => c.seriousness === "Serious").length}
+            </div>
+            <div className="foot">
+              {isManager ? "new / under validation" : "15-day expedited clock"}
+            </div>
+          </div>
+        </div>
+      )}
 
-      {!isField && (
+      {isManager && (
         <div className="panel">
           <h3>
             Case status breakdown<small>ALL PRODUCTS</small>
@@ -177,10 +276,7 @@ function Dashboard() {
           <div className="status-legend">
             {counts.map((c) => (
               <div className="item" key={c.status}>
-                <span
-                  className="sw"
-                  style={{ background: STATUS_COLOR[c.status as CaseStatus] }}
-                />
+                <span className="sw" style={{ background: STATUS_COLOR[c.status as CaseStatus] }} />
                 {c.status} ({c.n})
               </div>
             ))}
@@ -214,48 +310,44 @@ function Dashboard() {
             {recent.length === 0 ? (
               <div className="empty">No cases received yet.</div>
             ) : (
-              <table>
-                <thead>
-                  <tr>
-                    <th>Case ID</th>
-                    <th>Patient</th>
-                    <th>Product</th>
-                    <th>MedDRA term</th>
-                    <th>Seriousness</th>
-                    <th>Status</th>
-                    <th>Due (E2B)</th>
-                    <th>Assigned</th>
-                    <th>Channel</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recent.map((c) => (
-                    <tr
-                      key={c.id}
-                      className="rowlink"
-                      onClick={() => navigate({ to: "/cases/$caseId", params: { caseId: c.id } })}
-                    >
-                      <td className="mono">{c.case_number}</td>
-                      <td>{patientLabel(c)}</td>
-                      <td>{c.product_name}</td>
-                      <td>{c.meddra_term ?? "—"}</td>
-                      <td>
-                        <span
-                          className={`badge ${c.seriousness === "Serious" ? "serious" : "nonserious"}`}
-                        >
-                          {c.seriousness}
-                        </span>
-                      </td>
-                      <td>
-                        <span className="st-pill">{c.status}</span>
-                      </td>
-                      <td className="mono">{c.due_date ?? "—"}</td>
-                      <td>{shortName(nameById.get(c.assigned_to ?? "") ?? null)}</td>
-                      <td>{c.channel}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              caseTable(recent)
+            )}
+          </div>
+        </>
+      ) : isCoordinator ? (
+        <>
+          <div className="panel">
+            <h3>
+              Today's action list
+              <small>{shortName(session?.fullName).toUpperCase()}</small>
+            </h3>
+            {actionList.length === 0 ? (
+              <div className="empty">Nothing waiting on you right now.</div>
+            ) : (
+              <div className="task-list">
+                {actionList.map((c) => (
+                  <div
+                    className="task-row"
+                    key={c.id}
+                    onClick={() => navigate({ to: "/cases/$caseId", params: { caseId: c.id } })}
+                  >
+                    <span className="mono task-ref">{c.case_number}</span>
+                    <span className="task-action">{NEXT_ACTION[c.status]}</span>
+                    <span className="st-pill">{c.status}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="panel">
+            <h3>
+              My case queue<small>SORTED BY DUE DATE</small>
+            </h3>
+            {myQueue.length === 0 ? (
+              <div className="empty">No cases assigned to you.</div>
+            ) : (
+              caseTable(myQueue)
             )}
           </div>
         </>
@@ -263,8 +355,7 @@ function Dashboard() {
         <div className="detail-grid">
           <div className="panel">
             <h3>
-              {isField ? "My submitted reports" : "My queue"}
-              <small>ACTION REQUIRED</small>
+              My submitted reports<small>ACTION REQUIRED</small>
             </h3>
             {myTasks.length === 0 ? (
               <div className="empty">Nothing assigned to you right now.</div>
@@ -314,33 +405,19 @@ function Dashboard() {
 
           <div className="panel">
             <h3>
-              {isField ? "Latest activity" : "Team workload"}
-              <small>{isField ? "RECENT" : "OPEN CASES PER OWNER"}</small>
+              Latest activity<small>RECENT</small>
             </h3>
-            {isField ? (
-              <div className="audit-list">
-                {rows.slice(0, 6).map((c) => (
-                  <div className="audit-row" key={c.id}>
-                    <span className="audit-time">{fmtDate(c.received_date)}</span>
-                    <span className="audit-body">
-                      <span className="mono">{c.case_number}</span> — {c.status}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : workload.length === 0 ? (
-              <div className="empty">No open cases assigned.</div>
-            ) : (
-              workload.map((w) => (
-                <div className="workload-row" key={w.name}>
-                  <div className="workload-name">{w.name}</div>
-                  <div className="workload-bar">
-                    <span style={{ width: `${(w.n / maxLoad) * 100}%` }} />
-                  </div>
-                  <div className="workload-count">{w.n} open</div>
+            <div className="audit-list">
+              {myCases.slice(0, 6).map((c) => (
+                <div className="audit-row" key={c.id}>
+                  <span className="audit-time">{fmtDate(c.received_date)}</span>
+                  <span className="audit-body">
+                    <span className="mono">{c.case_number}</span> — {c.status}
+                  </span>
                 </div>
-              ))
-            )}
+              ))}
+              {myCases.length === 0 && <div className="empty">No reports submitted yet.</div>}
+            </div>
           </div>
         </div>
       )}

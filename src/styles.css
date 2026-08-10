@@ -1273,3 +1273,57 @@ tr.rowlink:hover td {
   flex-wrap: wrap;
   margin-top: 16px;
 }
+
+/* ---------- signal detection table ---------- */
+.sig-pill {
+  display: inline-block;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  color: #8a9186;
+  white-space: nowrap;
+}
+.sig-pill.new {
+  border-color: rgba(201, 151, 95, 0.5);
+  color: #d9a86a;
+}
+.sig-pill.under-validation {
+  border-color: rgba(127, 207, 196, 0.5);
+  color: #7fcfc4;
+}
+.sig-pill.confirmed {
+  border-color: rgba(201, 107, 95, 0.5);
+  color: #e08e80;
+}
+.sig-pill.refuted {
+  color: #6f766a;
+}
+.sig-pill.detected {
+  border-color: rgba(127, 207, 196, 0.35);
+  color: #9fb0a6;
+}
+.sig-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+.signal-table td {
+  vertical-align: top;
+}
+
+/* ---------- coordinator action list ---------- */
+.task-row {
+  gap: 14px;
+}
+.task-ref {
+  color: #7fcfc4;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.task-action {
+  flex: 1;
+  font-size: 13px;
+  color: #d7dad1;
+}
