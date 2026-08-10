@@ -29,7 +29,7 @@ export async function logQms(params: {
   actorId: string;
   actorName: string;
   entryType?: string;
-  reference?: string;
+  reference?: string | undefined;
 }) {
   await supabase.from("qms_entries").insert({
     org_id: params.orgId,
