@@ -9,8 +9,8 @@ type NavItem = { to: string; label: string; roles?: AppRole[] };
 
 const NAV: NavItem[] = [
   { to: "/dashboard", label: "Dashboard" },
-  { to: "/intake", label: "New ICSR" },
-  { to: "/cases", label: "Case Management" },
+  { to: "/cases", label: "Case Workbench" },
+  { to: "/intake", label: "New ICSR Intake" },
   {
     to: "/whatsapp",
     label: "WhatsApp Intake",
