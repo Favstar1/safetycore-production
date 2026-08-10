@@ -1,7 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { initialsOf } from "@/lib/pv";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
@@ -20,12 +19,6 @@ export const Route = createFileRoute("/auth")({
   }),
   component: AuthPage,
 });
-
-const DEMO = [
-  { name: "Field Associate", email: "field.rep@fidson.com", tag: "Field" },
-  { name: "PV Coordinator", email: "pv.coordinator@fidson.com", tag: "Coordinator" },
-  { name: "PV Manager", email: "pv.manager@fidson.com", tag: "Manager" },
-];
 
 function AuthPage() {
   const navigate = useNavigate();
@@ -64,33 +57,10 @@ function AuthPage() {
         </div>
         <h2>Sign in to continue</h2>
         <p className="sub">
-          Demo accounts below use the password <span className="mono">password123</span>. Select an
-          account to prefill, or sign in with your own credentials.
+          Sign in with your SafetyCore account. Access is role-based and every action is recorded.
         </p>
 
         {error && <div className="signin-error">{error}</div>}
-
-        <div className="signin-list" style={{ marginBottom: 22 }}>
-          {DEMO.map((d) => (
-            <button
-              key={d.email}
-              className="signin-option"
-              disabled={busy}
-              onClick={() => {
-                setEmail(d.email);
-                setPassword("password123");
-                void signIn(d.email, "password123");
-              }}
-            >
-              <span className="signin-avatar">{initialsOf(d.name)}</span>
-              <span className="signin-text">
-                <span className="name">{d.name}</span>
-                <span className="title">{d.email}</span>
-              </span>
-              <span className="signin-role-tag">{d.tag}</span>
-            </button>
-          ))}
-        </div>
 
         <form
           onSubmit={(e) => {
