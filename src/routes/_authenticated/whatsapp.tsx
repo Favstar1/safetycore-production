@@ -203,10 +203,13 @@ function WhatsAppPage() {
     await supabase
       .from("whatsapp_threads")
       .update({
-        [key]: next,
+        criteria_reporter: key === "criteria_reporter" ? next : active.criteria_reporter,
+        criteria_patient: key === "criteria_patient" ? next : active.criteria_patient,
+        criteria_product: key === "criteria_product" ? next : active.criteria_product,
+        criteria_event: key === "criteria_event" ? next : active.criteria_event,
         criteria_confirmed_at: null,
         criteria_confirmed_by: null,
-      } as Record<string, never>)
+      })
       .eq("id", active.id);
     await logAudit({
       orgId: session.orgId,
