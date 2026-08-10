@@ -193,13 +193,20 @@ function WhatsAppPage() {
   }
 
   /** Reviewer confirms a minimum-information criterion against the conversation. */
-  async function toggleCriterion(key: string, label: string) {
+  async function toggleCriterion(
+    key: "criteria_reporter" | "criteria_patient" | "criteria_product" | "criteria_event",
+    label: string,
+  ) {
     if (!session || !active || busy) return;
     setBusy(true);
     const next = !(active as Record<string, unknown>)[key];
     await supabase
       .from("whatsapp_threads")
-      .update({ [key]: next, criteria_confirmed_at: null, criteria_confirmed_by: null })
+      .update({
+        [key]: next,
+        criteria_confirmed_at: null,
+        criteria_confirmed_by: null,
+      } as Record<string, never>)
       .eq("id", active.id);
     await logAudit({
       orgId: session.orgId,
@@ -449,7 +456,7 @@ function WhatsAppPage() {
                     type="button"
                     disabled={busy || active.status !== "New"}
                     title="Confirm against the conversation"
-                    onClick={() => void toggleCriterion(c.key, c.label)}
+                    onClick={() => void toggleCriterion(c.key as "criteria_reporter", c.label)}
                     className={`criteria-pill${(active as Record<string, unknown>)[c.key] ? " met" : ""}`}
                   >
                     {c.label}
