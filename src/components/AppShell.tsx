@@ -120,7 +120,7 @@ function Notifications({ userId }: { userId: string }) {
         }}
         aria-label="Notifications"
       >
-        Alerts
+        <Bell size={15} aria-hidden />
         {unread > 0 && <span className="notif-badge">{unread}</span>}
       </button>
       {open && (
