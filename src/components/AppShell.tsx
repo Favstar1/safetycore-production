@@ -176,7 +176,7 @@ export function AppShell({
           <span className="brand-mark">MN</span>
           <span className="brand-name">SafetyCore</span>
         </div>
-        <div className="env-tag">Demo environment · Mock data</div>
+        
         <nav className="nav">
           {items.map((n) => (
             <Link
