@@ -36,17 +36,24 @@ function AuthPage() {
   async function signIn(withEmail: string, withPassword: string) {
     setBusy(true);
     setError(null);
+    // Drop any previous user's session + cached data before authenticating.
+    await supabase.auth.signOut();
+    await queryClient.cancelQueries();
+    queryClient.clear();
     const { error } = await supabase.auth.signInWithPassword({
       email: withEmail,
       password: withPassword,
     });
-    setBusy(false);
     if (error) {
+      setBusy(false);
       setError(error.message);
       return;
     }
+    await queryClient.invalidateQueries();
+    setBusy(false);
     navigate({ to: "/dashboard", replace: true });
   }
+
 
   return (
     <div className="signin-overlay">
