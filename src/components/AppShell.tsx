@@ -203,7 +203,6 @@ export function AppShell({
             {subtitle && <div className="sub">{subtitle}</div>}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            {actions}
             <GlobalSearch />
             {session && <Notifications userId={session.userId} />}
             {session && (
@@ -211,13 +210,17 @@ export function AppShell({
                 <div className="account-avatar">{initialsOf(session.fullName)}</div>
                 <div className="account-info">
                   <span className="account-name">{session.fullName}</span>
-                  <span className="account-role">{ROLE_LABEL[session.role]}</span>
+                  <span className="account-role">
+                    {ROLE_LABEL[session.role]}
+                    {session.role === "PV_MANAGER" ? " / QPPV" : ""}
+                  </span>
                 </div>
+                <button className="btn switch-user" onClick={signOut}>
+                  Switch user
+                </button>
               </div>
             )}
-            <button className="btn" onClick={signOut}>
-              Sign out
-            </button>
+            {actions}
           </div>
         </header>
         <main className="content">{children}</main>
