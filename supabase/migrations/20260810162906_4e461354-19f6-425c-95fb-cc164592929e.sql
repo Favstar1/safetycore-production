@@ -1,0 +1,1 @@
+ALTER TABLE public.cases ALTER COLUMN meddra_term DROP NOT NULL;
