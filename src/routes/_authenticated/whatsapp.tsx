@@ -32,6 +32,54 @@ export const Route = createFileRoute("/_authenticated/whatsapp")({
 
 const SERIOUS_KEYWORDS = ["breathing", "swelling", "hospital", "death", "unconscious", "bleeding"];
 
+type Simulation = {
+  name: string;
+  reporterType: string;
+  product: string;
+  term: string;
+  serious: boolean;
+  messages: string[];
+};
+
+const SIMULATIONS: Simulation[] = [
+  {
+    name: "Kemi T.",
+    reporterType: "Healthcare Professional",
+    product: "Astymin Forte",
+    term: "Angioedema",
+    serious: true,
+    messages: [
+      "Good afternoon, I am a nurse at a clinic in Ikeja.",
+      "A patient took Astymin Forte yesterday and now has swelling of the face and difficulty breathing.",
+      "We referred her to the hospital this morning.",
+    ],
+  },
+  {
+    name: "Uche N.",
+    reporterType: "Patient / Consumer",
+    product: "Fidson Paracetamol 500mg",
+    term: "Rash",
+    serious: false,
+    messages: [
+      "Hello, I bought paracetamol from a pharmacy last week.",
+      "After two tablets I developed an itchy rash on my arms.",
+      "It has not gone away, should I stop taking it?",
+    ],
+  },
+  {
+    name: "Dr. Bello A.",
+    reporterType: "Healthcare Professional",
+    product: "Gastromet",
+    term: "Nausea",
+    serious: false,
+    messages: [
+      "Reporting on behalf of a 42 year old male patient, initials B.A.",
+      "He started Gastromet three days ago and complains of persistent nausea and dizziness.",
+      "No hospitalisation, symptoms ongoing.",
+    ],
+  },
+];
+
 function relTime(iso?: string | null) {
   if (!iso) return "";
   const d = new Date(iso);
