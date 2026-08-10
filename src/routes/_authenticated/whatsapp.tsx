@@ -1,7 +1,9 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
+import { getWhatsAppConfig, sendWhatsAppMessage } from "@/lib/whatsapp.functions";
 import { AppShell } from "@/components/AppShell";
 import { useSession } from "@/hooks/useSession";
 import { logAudit } from "@/lib/audit";
@@ -30,36 +32,6 @@ export const Route = createFileRoute("/_authenticated/whatsapp")({
 
 const SERIOUS_KEYWORDS = ["breathing", "swelling", "hospital", "death", "unconscious", "bleeding"];
 
-const SIM_SCENARIOS = [
-  {
-    contact: "+234 803 ••• 447",
-    contact_name: "Ifeanyi B. (Patient)",
-    reporter_type: "Patient / Consumer",
-    body: "I took Lisinopril 10mg yesterday and my face started swelling, I'm having trouble breathing.",
-    product: "Lisinopril 10mg",
-    term: "Angioedema",
-    criteria: { reporter: true, patient: true, product: true, event: true },
-  },
-  {
-    contact: "+234 706 ••• 190",
-    contact_name: "Grace O. (Pharmacist)",
-    reporter_type: "Pharmacist",
-    body: "A customer says the Metformin 500mg gave her severe nausea and vomiting for two days.",
-    product: "Metformin 500mg",
-    term: "Nausea",
-    criteria: { reporter: true, patient: false, product: true, event: true },
-  },
-  {
-    contact: "+234 810 ••• 022",
-    contact_name: "Unknown sender",
-    reporter_type: null,
-    body: "How much is Losartan 50mg selling for now? I want to buy for my father.",
-    product: null,
-    term: null,
-    criteria: { reporter: false, patient: false, product: false, event: false },
-  },
-] as const;
-
 function relTime(iso?: string | null) {
   if (!iso) return "";
   const d = new Date(iso);
@@ -79,6 +51,12 @@ function WhatsAppPage() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const sendWa = useServerFn(sendWhatsAppMessage);
+  const waConfig = useServerFn(getWhatsAppConfig);
+  const { data: config } = useQuery({
+    queryKey: ["wa-config"],
+    queryFn: () => waConfig({}),
+  });
 
   const { data: threads } = useQuery({
     queryKey: ["wa-threads"],
@@ -132,116 +110,175 @@ function WhatsAppPage() {
       SERIOUS_KEYWORDS.some((k) => m.body.toLowerCase().includes(k)),
     ) || !!extract?.serious_flag;
 
-  async function sendMessage(body: string, direction: "in" | "out", sender?: string) {
-    if (!session || !active) return;
-    await supabase.from("whatsapp_messages").insert({
-      thread_id: active.id,
-      org_id: session.orgId,
-      direction,
-      body,
-      sender: sender ?? (direction === "out" ? session.fullName : active.contact_name),
-      sent_at: new Date().toISOString(),
-    });
-    await supabase
-      .from("whatsapp_threads")
-      .update({ updated_at: new Date().toISOString() })
-      .eq("id", active.id);
+  async function sendOutbound(body: string) {
+    if (!active) return null;
+    const res = await sendWa({ data: { threadId: active.id, body } });
+    return res;
+  }
+
+  function deliveryNote(res: { deliveryStatus: string } | null, fallback: string) {
+    if (!res) return fallback;
+    if (res.deliveryStatus === "sent") return `${fallback} — delivered via WhatsApp`;
+    if (res.deliveryStatus === "failed") return `${fallback} — WhatsApp delivery failed, see thread`;
+    return `${fallback} — queued (WhatsApp Business Platform not configured)`;
   }
 
   async function requestMissingInfo() {
     if (!session || !active || busy) return;
     setBusy(true);
     const missing = MIN_CRITERIA.filter((c) => !(active as Record<string, unknown>)[c.key]);
-    if (missing.length === 0) {
-      await sendMessage(
-        "Thank you. Could you share any additional detail on the reaction (dates, outcome, treatment given)?",
-        "out",
-      );
-      await logAudit({
-        orgId: session.orgId,
-        entity: "whatsapp_thread",
-        entityId: active.id,
-        action: `Follow-up information requested on thread ${active.thread_ref}`,
-        actorId: session.userId,
-        actorName: session.fullName,
-      });
-      await queryClient.invalidateQueries();
-      setBusy(false);
-      return flash("Follow-up request sent");
-    }
-
     const asks: Record<string, string> = {
       criteria_reporter: "your full name and how we can reach you",
       criteria_patient: "the patient's initials, age and sex",
       criteria_product: "the exact medicine name, strength and batch number",
       criteria_event: "what reaction was experienced and when it started",
     };
-    await sendMessage(
-      `Thank you for the report. To register this safety report we still need: ${missing
-        .map((m) => asks[m.key])
-        .join("; ")}. Please reply with these details.`,
-      "out",
-    );
-    const replies: Record<string, string> = {
-      criteria_reporter: "My name is on this line, you can reach me here.",
-      criteria_patient: "Patient is 34 years old, female, initials A.O.",
-      criteria_product: "The medicine is the one prescribed at the clinic, batch on the pack.",
-      criteria_event: "The reaction started two days after taking the medicine.",
-    };
-    await sendMessage(missing.map((m) => replies[m.key]).join(" "), "in");
-    await supabase
-      .from("whatsapp_threads")
-      .update({
-        criteria_reporter: active.criteria_reporter || missing.some((m) => m.key === "criteria_reporter"),
-        criteria_patient: active.criteria_patient || missing.some((m) => m.key === "criteria_patient"),
-        criteria_product: active.criteria_product || missing.some((m) => m.key === "criteria_product"),
-        criteria_event: active.criteria_event || missing.some((m) => m.key === "criteria_event"),
-      })
-      .eq("id", active.id);
-    await logAudit({
-      orgId: session.orgId,
-      entity: "whatsapp_thread",
-      entityId: active.id,
-      action: `Missing minimum-criteria information requested and received on thread ${active.thread_ref} (${missing
-        .map((m) => m.label)
-        .join(", ")})`,
-      actorId: session.userId,
-      actorName: session.fullName,
-    });
-    await queryClient.invalidateQueries();
+    const body =
+      missing.length === 0
+        ? "Thank you. Could you share any additional detail on the reaction (dates, outcome, treatment given)?"
+        : `Thank you for the report. To register this safety report we still need: ${missing
+            .map((m) => asks[m.key])
+            .join("; ")}. Please reply with these details.`;
+    try {
+      const res = await sendOutbound(body);
+      await logAudit({
+        orgId: session.orgId,
+        entity: "whatsapp_thread",
+        entityId: active.id,
+        action:
+          missing.length === 0
+            ? `Additional detail requested on thread ${active.thread_ref}`
+            : `Missing minimum-criteria information requested on thread ${active.thread_ref} (${missing
+                .map((m) => m.label)
+                .join(", ")})`,
+        actorId: session.userId,
+        actorName: session.fullName,
+      });
+      await queryClient.invalidateQueries();
+      flash(deliveryNote(res, "Information request recorded"));
+    } catch (e) {
+      flash(e instanceof Error ? e.message : "Could not send request");
+    }
     setBusy(false);
-    flash("Missing information requested — reporter responded");
   }
 
   async function requestConsent() {
     if (!session || !active || busy) return;
     setBusy(true);
-    if (active.consent) {
-      await sendMessage(
-        "Noting that you have already consented to your data being used for safety monitoring. Thank you.",
-        "out",
+    try {
+      const res = await sendOutbound(
+        active.consent
+          ? "Noting that you have already consented to your data being used for safety monitoring. Thank you."
+          : "Before we can record this report we need your permission to process your information for drug safety monitoring, in line with the NDPR. Do you consent?",
       );
+      await logAudit({
+        orgId: session.orgId,
+        entity: "whatsapp_thread",
+        entityId: active.id,
+        action: `NDPR data-use consent requested on thread ${active.thread_ref}`,
+        actorId: session.userId,
+        actorName: session.fullName,
+      });
       await queryClient.invalidateQueries();
-      setBusy(false);
-      return flash("Consent already on record");
+      flash(deliveryNote(res, "Consent request recorded"));
+    } catch (e) {
+      flash(e instanceof Error ? e.message : "Could not send consent request");
     }
-    await sendMessage(
-      "Before we can record this report we need your permission to process your information for drug safety monitoring, in line with the NDPR. Do you consent?",
-      "out",
-    );
-    await sendMessage("Yes, I consent to that.", "in");
-    await supabase.from("whatsapp_threads").update({ consent: true }).eq("id", active.id);
+    setBusy(false);
+  }
+
+  /** Reviewer confirms a minimum-information criterion against the conversation. */
+  async function toggleCriterion(key: string, label: string) {
+    if (!session || !active || busy) return;
+    setBusy(true);
+    const next = !(active as Record<string, unknown>)[key];
+    await supabase
+      .from("whatsapp_threads")
+      .update({ [key]: next, criteria_confirmed_at: null, criteria_confirmed_by: null })
+      .eq("id", active.id);
     await logAudit({
       orgId: session.orgId,
       entity: "whatsapp_thread",
       entityId: active.id,
-      action: `NDPR data-use consent requested and confirmed on thread ${active.thread_ref}`,
+      action: `PV reviewer marked "${label}" as ${next ? "present" : "not present"} on thread ${active.thread_ref}`,
       actorId: session.userId,
       actorName: session.fullName,
     });
     await queryClient.invalidateQueries();
     setBusy(false);
-    flash("NDPR consent confirmed");
+  }
+
+  async function recordConsent() {
+    if (!session || !active || busy) return;
+    setBusy(true);
+    const next = !active.consent;
+    await supabase.from("whatsapp_threads").update({ consent: next }).eq("id", active.id);
+    await logAudit({
+      orgId: session.orgId,
+      entity: "whatsapp_thread",
+      entityId: active.id,
+      action: `PV reviewer recorded NDPR consent as ${next ? "given" : "not given"} on thread ${active.thread_ref}`,
+      actorId: session.userId,
+      actorName: session.fullName,
+    });
+    await queryClient.invalidateQueries();
+    setBusy(false);
+  }
+
+  async function confirmMinimumInformation() {
+    if (!session || !active || busy || criteriaMet !== 4) return;
+    setBusy(true);
+    await supabase
+      .from("whatsapp_threads")
+      .update({ criteria_confirmed_at: new Date().toISOString(), criteria_confirmed_by: session.userId })
+      .eq("id", active.id);
+    await logAudit({
+      orgId: session.orgId,
+      entity: "whatsapp_thread",
+      entityId: active.id,
+      action: `PV reviewer confirmed all four minimum ICSR criteria on thread ${active.thread_ref}`,
+      actorId: session.userId,
+      actorName: session.fullName,
+    });
+    await queryClient.invalidateQueries();
+    setBusy(false);
+    flash("Minimum information confirmed by reviewer");
+  }
+
+  async function decideSeriousness(decision: "Serious" | "Non-serious") {
+    if (!session || !active || busy) return;
+    setBusy(true);
+    if (extract) {
+      await supabase
+        .from("whatsapp_extracts")
+        .update({
+          reviewer_seriousness: decision,
+          reviewer_decided_at: new Date().toISOString(),
+          reviewer_decided_by: session.userId,
+        })
+        .eq("id", extract.id);
+    } else {
+      await supabase.from("whatsapp_extracts").insert({
+        thread_id: active.id,
+        org_id: session.orgId,
+        serious_flag: seriousSignal,
+        serious_flag_reason: seriousSignal ? "Triage keyword detected in conversation" : null,
+        reviewer_seriousness: decision,
+        reviewer_decided_at: new Date().toISOString(),
+        reviewer_decided_by: session.userId,
+      });
+    }
+    await logAudit({
+      orgId: session.orgId,
+      entity: "whatsapp_thread",
+      entityId: active.id,
+      action: `PV reviewer classified thread ${active.thread_ref} as ${decision}`,
+      actorId: session.userId,
+      actorName: session.fullName,
+    });
+    await queryClient.invalidateQueries();
+    setBusy(false);
+    flash(`Classified as ${decision}`);
   }
 
   async function markNotReportable() {
@@ -262,56 +299,6 @@ function WhatsAppPage() {
     await queryClient.invalidateQueries();
     setBusy(false);
     flash("Marked not reportable");
-  }
-
-  async function simulateMessage() {
-    if (!session || busy) return;
-    setBusy(true);
-    const s = SIM_SCENARIOS[Math.floor(Math.random() * SIM_SCENARIOS.length)]!;
-    const now = new Date().toISOString();
-    const { data: thread, error } = await supabase
-      .from("whatsapp_threads")
-      .insert({
-        org_id: session.orgId,
-        thread_ref: `WA-${Math.floor(1000 + Math.random() * 9000)}`,
-        contact: s.contact,
-        contact_name: s.contact_name,
-        reporter_type: s.reporter_type,
-        status: "New",
-        consent: false,
-        criteria_reporter: s.criteria.reporter,
-        criteria_patient: s.criteria.patient,
-        criteria_product: s.criteria.product,
-        criteria_event: s.criteria.event,
-      })
-      .select("id")
-      .single();
-    if (error || !thread) {
-      setBusy(false);
-      return flash(error?.message ?? "Could not simulate message");
-    }
-    await supabase.from("whatsapp_messages").insert({
-      thread_id: thread.id,
-      org_id: session.orgId,
-      direction: "in",
-      body: s.body,
-      sender: s.contact_name,
-      sent_at: now,
-    });
-    if (s.product || s.term) {
-      await supabase.from("whatsapp_extracts").insert({
-        thread_id: thread.id,
-        org_id: session.orgId,
-        product_name: s.product,
-        meddra_term: s.term,
-        serious_flag: SERIOUS_KEYWORDS.some((k) => s.body.toLowerCase().includes(k)),
-        narrative: `Auto-drafted from WhatsApp message — pending PV review and confirmation: "${s.body}"`,
-      });
-    }
-    await queryClient.invalidateQueries();
-    setActiveId(thread.id);
-    setBusy(false);
-    flash("Inbound message received");
   }
 
   async function convert() {
