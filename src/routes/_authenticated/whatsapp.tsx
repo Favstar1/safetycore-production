@@ -382,6 +382,69 @@ function WhatsAppPage() {
     navigate({ to: "/cases/$caseId", params: { caseId: data.id } });
   }
 
+  async function createSimulation() {
+    if (!session || busy) return;
+    setBusy(true);
+    const sim = SIMULATIONS[Math.floor(Math.random() * SIMULATIONS.length)]!;
+    const suffix = Math.floor(1000 + Math.random() * 9000).toString();
+    const contact = `+23480${suffix}${suffix.slice(0, 3)}`;
+    const { data: thread, error } = await supabase
+      .from("whatsapp_threads")
+      .insert({
+        org_id: session.orgId,
+        thread_ref: `WA-SIM-${suffix}`,
+        contact,
+        contact_name: `${sim.name} (simulated)`,
+        reporter_type: sim.reporterType,
+        status: "New",
+        consent: false,
+      })
+      .select("id, thread_ref")
+      .single();
+
+    if (error || !thread) {
+      setBusy(false);
+      return flash(error?.message ?? "Could not create simulation");
+    }
+
+    const base = Date.now() - sim.messages.length * 60_000;
+    await supabase.from("whatsapp_messages").insert(
+      sim.messages.map((body, i) => ({
+        thread_id: thread.id,
+        org_id: session.orgId,
+        direction: "in",
+        body,
+        sender: sim.name,
+        sent_at: new Date(base + i * 60_000).toISOString(),
+        delivery_status: "received",
+      })),
+    );
+
+    await supabase.from("whatsapp_extracts").insert({
+      thread_id: thread.id,
+      org_id: session.orgId,
+      product_name: sim.product,
+      meddra_term: sim.term,
+      serious_flag: sim.serious,
+      serious_flag_reason: sim.serious ? "Triage keyword detected in simulated conversation" : null,
+      narrative: sim.messages.join(" "),
+    });
+
+    await logAudit({
+      orgId: session.orgId,
+      entity: "whatsapp_thread",
+      entityId: thread.id,
+      action: `Simulated WhatsApp intake thread ${thread.thread_ref} created for training/testing`,
+      actorId: session.userId,
+      actorName: session.fullName,
+    });
+
+    await queryClient.invalidateQueries();
+    setActiveId(thread.id);
+    setBusy(false);
+    flash(`Simulation ${thread.thread_ref} created`);
+  }
+
   return (
     <AppShell
       title="WhatsApp Intake"
