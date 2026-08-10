@@ -1,6 +1,7 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Bell } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession } from "@/hooks/useSession";
 import { ROLE_LABEL, fmtDateTime, initialsOf, type AppRole } from "@/lib/pv";
@@ -9,8 +10,8 @@ type NavItem = { to: string; label: string; roles?: AppRole[] };
 
 const NAV: NavItem[] = [
   { to: "/dashboard", label: "Dashboard" },
-  { to: "/intake", label: "New ICSR" },
-  { to: "/cases", label: "Case Management" },
+  { to: "/cases", label: "Case Workbench" },
+  { to: "/intake", label: "New ICSR Intake" },
   {
     to: "/whatsapp",
     label: "WhatsApp Intake",
@@ -43,7 +44,7 @@ function GlobalSearch() {
     <div className="search-wrap">
       <input
         className="search-input"
-        placeholder="Search cases…"
+        placeholder="Search cases (ID, product, term)…"
         value={term}
         onChange={(e) => setTerm(e.target.value)}
         aria-label="Search cases"
@@ -120,7 +121,7 @@ function Notifications({ userId }: { userId: string }) {
         }}
         aria-label="Notifications"
       >
-        Alerts
+        <Bell size={15} aria-hidden />
         {unread > 0 && <span className="notif-badge">{unread}</span>}
       </button>
       {open && (
@@ -173,10 +174,10 @@ export function AppShell({
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand-mark">SC</span>
+          <span className="brand-mark">MN</span>
           <span className="brand-name">SafetyCore</span>
         </div>
-        <div className="env-tag">Validated · GxP</div>
+        <div className="env-tag">Demo environment · Mock data</div>
         <nav className="nav">
           {items.map((n) => (
             <Link
@@ -203,7 +204,6 @@ export function AppShell({
             {subtitle && <div className="sub">{subtitle}</div>}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            {actions}
             <GlobalSearch />
             {session && <Notifications userId={session.userId} />}
             {session && (
@@ -211,13 +211,17 @@ export function AppShell({
                 <div className="account-avatar">{initialsOf(session.fullName)}</div>
                 <div className="account-info">
                   <span className="account-name">{session.fullName}</span>
-                  <span className="account-role">{ROLE_LABEL[session.role]}</span>
+                  <span className="account-role">
+                    {ROLE_LABEL[session.role]}
+                    {session.role === "PV_MANAGER" ? " / QPPV" : ""}
+                  </span>
                 </div>
+                <button className="btn switch-user" onClick={signOut}>
+                  Switch user
+                </button>
               </div>
             )}
-            <button className="btn" onClick={signOut}>
-              Sign out
-            </button>
+            {actions}
           </div>
         </header>
         <main className="content">{children}</main>
