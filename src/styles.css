@@ -1176,3 +1176,16 @@ tr.rowlink:hover td {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------- manager dashboard chrome ---------- */
+.notif-bell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 10px;
+}
+.switch-user {
+  font-size: 11.5px;
+  padding: 5px 10px;
+  margin-left: 4px;
+}
