@@ -1243,6 +1243,11 @@ tr.rowlink:hover td {
   font-size: 11.5px;
   padding: 6px 10px;
 }
+.wa-sim-btn {
+  width: 100%;
+  margin-top: 10px;
+  font-size: 12px;
+}
 .wa-thread {
   position: relative;
   text-align: left;
