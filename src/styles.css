@@ -781,7 +781,42 @@ tr.rowlink:hover td {
   color: #7fcfc4;
   flex-shrink: 0;
 }
+.signin-accounts {
+  margin-top: 18px;
+  display: grid;
+  gap: 6px;
+}
+.signin-accounts-title {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6f766a;
+  margin-bottom: 2px;
+}
+.signin-account {
+  display: grid;
+  gap: 2px;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+}
+.signin-account:hover {
+  border-color: rgba(45, 212, 191, 0.45);
+}
+.signin-account-role {
+  font-size: 12px;
+  color: #e7ece4;
+}
+.signin-account-email {
+  font-size: 11px;
+  color: #8b938a;
+  font-family: "IBM Plex Mono", monospace;
+}
 .signin-foot {
+
   margin-top: 20px;
   font-size: 11px;
   color: #6f766a;

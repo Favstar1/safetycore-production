@@ -95,6 +95,30 @@ function AuthPage() {
           </button>
         </form>
 
+        <div className="signin-accounts">
+          <div className="signin-accounts-title">Test accounts · password: password123</div>
+          {[
+            { role: "Field Associate", name: "A. Balogun", email: "field.rep@fidson.com" },
+            { role: "PV Coordinator", name: "T. Okafor", email: "pv.coordinator@fidson.com" },
+            { role: "PV Manager / QPPV", name: "F. Yusuf", email: "pv.manager@fidson.com" },
+          ].map((a) => (
+            <button
+              key={a.email}
+              type="button"
+              className="signin-account"
+              onClick={() => {
+                setEmail(a.email);
+                setPassword("password123");
+              }}
+            >
+              <span className="signin-account-role">
+                {a.role} · {a.name}
+              </span>
+              <span className="signin-account-email">{a.email}</span>
+            </button>
+          ))}
+        </div>
+
         <div className="signin-foot">
           Access is logged. All actions in SafetyCore are recorded in an append-only audit trail in
           line with GxP and 21 CFR Part 11 expectations.
