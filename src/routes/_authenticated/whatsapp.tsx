@@ -514,6 +514,14 @@ function WhatsAppPage() {
               {config?.configured ? "WhatsApp connected" : "WhatsApp not configured"}
             </span>
           </div>
+          <button
+            type="button"
+            className="btn btn-secondary wa-sim-btn"
+            disabled={busy || !session}
+            onClick={() => void createSimulation()}
+          >
+            + New simulation
+          </button>
           <div className="wa-list">
             {(threads ?? []).map((t) => {
               const last = (allMessages ?? []).filter((m) => m.thread_id === t.id).slice(-1)[0];
