@@ -104,7 +104,12 @@ function WhatsAppPage() {
   const criteriaMet = active
     ? MIN_CRITERIA.filter((c) => (active as Record<string, unknown>)[c.key]).length
     : 0;
-  const convertible = !!active && criteriaMet === 4 && active.consent && active.status === "New";
+  const convertible =
+    !!active &&
+    criteriaMet === 4 &&
+    active.consent &&
+    !!active.criteria_confirmed_at &&
+    active.status === "New";
   const seriousSignal =
     messages.some((m) =>
       SERIOUS_KEYWORDS.some((k) => m.body.toLowerCase().includes(k)),
@@ -311,7 +316,7 @@ function WhatsAppPage() {
     }
 
     const received = new Date();
-    const serious = !!extract?.serious_flag || seriousSignal;
+    const serious = extract?.reviewer_seriousness === "Serious";
     const due = new Date(received);
     due.setDate(due.getDate() + (serious ? 15 : 90));
 
@@ -384,9 +389,9 @@ function WhatsAppPage() {
         <div>
           <div className="wa-inbox-head">
             <h3>Inbox</h3>
-            <button className="btn" disabled={busy} onClick={() => void simulateMessage()}>
-              + Simulate message
-            </button>
+            <span className={`wa-status ${config?.configured ? "converted" : "new"}`}>
+              {config?.configured ? "WhatsApp connected" : "WhatsApp not configured"}
+            </span>
           </div>
           <div className="wa-list">
             {(threads ?? []).map((t) => {
@@ -410,7 +415,13 @@ function WhatsAppPage() {
                 </button>
               );
             })}
-            {(threads ?? []).length === 0 && <div className="empty">No inbound threads.</div>}
+            {(threads ?? []).length === 0 && (
+              <div className="empty">
+                {config?.configured
+                  ? "No inbound threads yet."
+                  : "No inbound threads. Connect the WhatsApp Business Platform (access token, phone number ID, webhook verify token and app secret) to start receiving reports."}
+              </div>
+            )}
           </div>
         </div>
 
@@ -426,28 +437,42 @@ function WhatsAppPage() {
 
               {seriousSignal && (
                 <div className="wa-alert">
-                  Potential serious case detected (keywords: breathing / swelling / hospital) —
-                  expedite review.
+                  Potential serious case detected — triage signal only, expedite review. A qualified
+                  PV reviewer must confirm the regulatory seriousness classification.
                 </div>
               )}
 
               <div className="criteria-row">
                 {MIN_CRITERIA.map((c) => (
-                  <span
+                  <button
                     key={c.key}
+                    type="button"
+                    disabled={busy || active.status !== "New"}
+                    title="Confirm against the conversation"
+                    onClick={() => void toggleCriterion(c.key, c.label)}
                     className={`criteria-pill${(active as Record<string, unknown>)[c.key] ? " met" : ""}`}
                   >
                     {c.label}
-                  </span>
+                  </button>
                 ))}
               </div>
               <div className="criteria-note">
                 {criteriaMet} of 4 minimum ICSR criteria met — a valid ICSR needs all four before it
                 can be created.
               </div>
-              <span className={`consent-pill${active.consent ? " met" : ""}`}>
-                Data-use consent (NDPR){active.consent ? " · recorded" : ""}
-              </span>
+              <button
+                type="button"
+                disabled={busy || active.status !== "New"}
+                onClick={() => void recordConsent()}
+                className={`consent-pill${active.consent ? " met" : ""}`}
+              >
+                Data-use consent (NDPR){active.consent ? " · recorded" : " · not recorded"}
+              </button>
+              <div className="criteria-note">
+                {active.criteria_confirmed_at
+                  ? "Minimum information confirmed by a PV reviewer."
+                  : "Reviewer confirmation is required before an ICSR can be created — extraction alone never creates a case."}
+              </div>
 
               <div className="wa-chat">
                 {messages.map((m) => (
@@ -473,8 +498,34 @@ function WhatsAppPage() {
                   Draft narrative: {extract?.narrative ?? "No narrative extracted yet."}
                 </div>
 
+                <div className="wa-extract-line">
+                  Reviewer seriousness decision:{" "}
+                  <strong>{extract?.reviewer_seriousness ?? "Not yet decided"}</strong>
+                </div>
+
                 {active.status === "New" ? (
                   <div className="wa-actions">
+                    <button
+                      className="btn"
+                      disabled={busy}
+                      onClick={() => void decideSeriousness("Serious")}
+                    >
+                      Classify serious
+                    </button>
+                    <button
+                      className="btn"
+                      disabled={busy}
+                      onClick={() => void decideSeriousness("Non-serious")}
+                    >
+                      Classify non-serious
+                    </button>
+                    <button
+                      className="btn"
+                      disabled={busy || criteriaMet !== 4 || !!active.criteria_confirmed_at}
+                      onClick={() => void confirmMinimumInformation()}
+                    >
+                      Confirm minimum information
+                    </button>
                     <button className="btn" disabled={busy} onClick={() => void requestMissingInfo()}>
                       Request missing info
                     </button>
@@ -514,7 +565,8 @@ function WhatsAppPage() {
 
                 {active.status === "New" && !convertible && (
                   <div className="perm-note">
-                    Conversion requires all four minimum criteria and recorded NDPR consent.
+                    Conversion requires all four minimum criteria, recorded NDPR consent and
+                    reviewer confirmation.
                   </div>
                 )}
               </div>
