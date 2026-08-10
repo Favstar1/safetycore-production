@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { AppShell } from "@/components/AppShell";
 import { useSession, canReview } from "@/hooks/useSession";
 import { logAudit, logQms } from "@/lib/audit";
-import { SIGNAL_THRESHOLD, fmtDate } from "@/lib/pv";
+import { SIGNAL_THRESHOLD } from "@/lib/pv";
 
 export const Route = createFileRoute("/_authenticated/signals")({
   head: () => ({
@@ -18,16 +18,20 @@ export const Route = createFileRoute("/_authenticated/signals")({
       },
       { property: "og:title", content: "Signal Detection — SafetyCore" },
       { property: "og:description", content: "Detect, validate, confirm or refute safety signals." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
   component: SignalsPage,
 });
 
+type SignalStatus = "New" | "Under Validation" | "Confirmed" | "Refuted";
+
 function SignalsPage() {
   const queryClient = useQueryClient();
   const { data: session } = useSession();
-  const [notes, setNotes] = useState<Record<string, string>>({});
   const [toast, setToast] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const { data: cases } = useQuery({
     queryKey: ["cases", "all"],
@@ -37,7 +41,7 @@ function SignalsPage() {
   const { data: signals } = useQuery({
     queryKey: ["signals"],
     queryFn: async () =>
-      (await supabase.from("signals").select("*").order("case_count", { ascending: false })).data ??
+      (await supabase.from("signals").select("*").order("signal_ref", { ascending: false })).data ??
       [],
   });
 
@@ -46,25 +50,24 @@ function SignalsPage() {
     setTimeout(() => setToast(null), 2600);
   }
 
-  // Live clustering from case data — the detection view.
   const clusters = Object.values(
-    (cases ?? []).reduce<Record<string, { product: string; term: string; n: number; serious: number }>>(
-      (acc, c) => {
-        if (!c.meddra_term) return acc;
-        const key = `${c.product_name}||${c.meddra_term}`;
-        acc[key] ??= { product: c.product_name, term: c.meddra_term, n: 0, serious: 0 };
-        acc[key]!.n += 1;
-        if (c.seriousness === "Serious") acc[key]!.serious += 1;
-        return acc;
-      },
-      {},
-    ),
-  )
-    .filter((x) => x.n >= SIGNAL_THRESHOLD)
-    .sort((a, b) => b.n - a.n);
+    (cases ?? []).reduce<Record<string, { product: string; term: string; n: number }>>((acc, c) => {
+      if (!c.meddra_term) return acc;
+      const key = `${c.product_name}||${c.meddra_term}`;
+      acc[key] ??= { product: c.product_name, term: c.meddra_term, n: 0 };
+      acc[key]!.n += 1;
+      return acc;
+    }, {}),
+  ).filter((x) => x.n >= SIGNAL_THRESHOLD);
 
-  async function createSignal(cluster: { product: string; term: string; n: number }) {
-    if (!session) return;
+  const unraised = clusters.filter(
+    (c) =>
+      !(signals ?? []).some((s) => s.product_name === c.product && s.meddra_term === c.term),
+  );
+
+  async function raiseSignal(cluster: { product: string; term: string; n: number }) {
+    if (!session || busy) return;
+    setBusy(true);
     const ref = `SIG-${new Date().getFullYear()}-${String((signals ?? []).length + 1).padStart(3, "0")}`;
     const { error } = await supabase.from("signals").insert({
       org_id: session.orgId,
@@ -74,7 +77,10 @@ function SignalsPage() {
       case_count: cluster.n,
       status: "New",
     });
-    if (error) return flash(error.message);
+    if (error) {
+      setBusy(false);
+      return flash(error.message);
+    }
     await logQms({
       orgId: session.orgId,
       event: `Signal ${ref} raised: ${cluster.product} / ${cluster.term} (${cluster.n} cases)`,
@@ -82,151 +88,156 @@ function SignalsPage() {
       actorName: session.fullName,
       reference: ref,
     });
-    queryClient.invalidateQueries();
+    await queryClient.invalidateQueries();
+    setBusy(false);
     flash(`${ref} raised for validation`);
   }
 
-  async function decide(signalId: string, decision: "Under Validation" | "Confirmed" | "Refuted") {
-    if (!session) return;
-    const note = notes[signalId] ?? "";
+  async function decide(signalId: string, ref: string, decision: SignalStatus) {
+    if (!session || busy) return;
+    setBusy(true);
     const { error } = await supabase
       .from("signals")
       .update({
         status: decision,
         review_decision: decision,
-        notes: note || null,
         reviewed_by: session.userId,
         reviewed_at: new Date().toISOString(),
       })
       .eq("id", signalId);
-    if (error) return flash(error.message);
+    if (error) {
+      setBusy(false);
+      return flash(error.message);
+    }
     await supabase.from("signal_reviews").insert({
       org_id: session.orgId,
       signal_id: signalId,
       decision,
-      notes: note || null,
       reviewer_id: session.userId,
     });
     await logAudit({
       orgId: session.orgId,
       entity: "signal",
       entityId: signalId,
-      action: `Signal decision recorded: ${decision}`,
+      action: `Signal ${ref} decision recorded: ${decision}`,
       actorId: session.userId,
       actorName: session.fullName,
     });
-    queryClient.invalidateQueries();
-    flash(`Signal marked ${decision}`);
+    await logQms({
+      orgId: session.orgId,
+      entryType: "Signal management",
+      event: `Signal ${ref} ${decision.toLowerCase()}`,
+      reference: ref,
+      actorId: session.userId,
+      actorName: session.fullName,
+    });
+    await queryClient.invalidateQueries();
+    setBusy(false);
+    flash(`Signal ${decision}`);
   }
+
+  const reviewer = canReview(session?.role);
 
   return (
     <AppShell
       title="Signal Detection"
-      subtitle={`Clusters of ${SIGNAL_THRESHOLD}+ cases sharing a product and MedDRA preferred term`}
+      subtitle="Cases grouped by product and MedDRA term for review."
     >
       <div className="panel">
         <h3>
-          Detected clusters<small>LIVE FROM CASE DATA</small>
+          Signal detection &amp; validation
+          <small>THRESHOLD: ≥ {SIGNAL_THRESHOLD} CASES, SAME PRODUCT + TERM</small>
         </h3>
-        {clusters.length === 0 ? (
+        {(signals ?? []).length === 0 && unraised.length === 0 ? (
           <div className="empty">No clusters above the detection threshold.</div>
         ) : (
-          <table>
+          <table className="signal-table">
             <thead>
               <tr>
+                <th>Signal ID</th>
                 <th>Product</th>
-                <th>MedDRA PT</th>
-                <th>Cases</th>
-                <th>Serious</th>
-                <th />
+                <th>MedDRA term</th>
+                <th>Supporting cases</th>
+                <th>Status</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
-              {clusters.map((c) => {
-                const existing = (signals ?? []).find(
-                  (s) => s.product_name === c.product && s.meddra_term === c.term,
-                );
+              {(signals ?? []).map((s) => {
+                const live =
+                  clusters.find(
+                    (c) => c.product === s.product_name && c.term === s.meddra_term,
+                  )?.n ?? s.case_count;
                 return (
-                  <tr key={`${c.product}-${c.term}`}>
-                    <td>{c.product}</td>
-                    <td>{c.term}</td>
-                    <td className="mono">{c.n}</td>
-                    <td className="mono">{c.serious}</td>
+                  <tr key={s.id}>
+                    <td className="mono">{s.signal_ref}</td>
+                    <td>{s.product_name}</td>
+                    <td>{s.meddra_term}</td>
+                    <td>{live} cases</td>
                     <td>
-                      {existing ? (
-                        <span className="st-pill">{existing.status}</span>
-                      ) : (
+                      <span className={`sig-pill ${s.status.toLowerCase().replace(/\s+/g, "-")}`}>
+                        {s.status}
+                      </span>
+                    </td>
+                    <td>
+                      {!reviewer ? (
+                        <span className="perm-note" style={{ margin: 0 }}>
+                          PV Manager only
+                        </span>
+                      ) : s.status === "New" ? (
                         <button
                           className="btn"
-                          disabled={!canReview(session?.role)}
-                          onClick={() => void createSignal(c)}
+                          disabled={busy}
+                          onClick={() => void decide(s.id, s.signal_ref, "Under Validation")}
                         >
-                          Raise signal
+                          Validate
                         </button>
-                      )}
+                      ) : s.status === "Under Validation" ? (
+                        <div className="sig-actions">
+                          <button
+                            className="btn"
+                            disabled={busy}
+                            onClick={() => void decide(s.id, s.signal_ref, "Confirmed")}
+                          >
+                            Confirm
+                          </button>
+                          <button
+                            className="btn"
+                            disabled={busy}
+                            onClick={() => void decide(s.id, s.signal_ref, "Refuted")}
+                          >
+                            Refute
+                          </button>
+                        </div>
+                      ) : null}
                     </td>
                   </tr>
                 );
               })}
+              {unraised.map((c) => (
+                <tr key={`${c.product}-${c.term}`}>
+                  <td className="mono">—</td>
+                  <td>{c.product}</td>
+                  <td>{c.term}</td>
+                  <td>{c.n} cases</td>
+                  <td>
+                    <span className="sig-pill detected">Detected</span>
+                  </td>
+                  <td>
+                    {reviewer ? (
+                      <button className="btn" disabled={busy} onClick={() => void raiseSignal(c)}>
+                        Raise signal
+                      </button>
+                    ) : (
+                      <span className="perm-note" style={{ margin: 0 }}>
+                        PV Manager only
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
-        )}
-        {!canReview(session?.role) && (
-          <div className="perm-note">Raising and adjudicating signals is restricted to PV Manager / Admin.</div>
-        )}
-      </div>
-
-      <div className="panel">
-        <h3>
-          Signal validation<small>STRUCTURED ADJUDICATION</small>
-        </h3>
-        {(signals ?? []).length === 0 ? (
-          <div className="empty">No signals under management.</div>
-        ) : (
-          (signals ?? []).map((s) => (
-            <div
-              key={s.id}
-              style={{ borderBottom: "1px solid var(--line)", padding: "14px 0" }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                <div>
-                  <span className="mono" style={{ color: "#7fcfc4" }}>
-                    {s.signal_ref}
-                  </span>{" "}
-                  — {s.product_name} / {s.meddra_term}
-                  <div style={{ fontSize: 12, color: "#8a9186", marginTop: 4 }}>
-                    {s.case_count} cases · raised {fmtDate(s.created_at)}
-                    {s.reviewed_at ? ` · last decision ${fmtDate(s.reviewed_at)}` : ""}
-                  </div>
-                </div>
-                <span className="st-pill">{s.status}</span>
-              </div>
-              {canReview(session?.role) && s.status !== "Confirmed" && s.status !== "Refuted" && (
-                <>
-                  <div className="field" style={{ marginTop: 10 }}>
-                    <label>Validation notes</label>
-                    <textarea
-                      value={notes[s.id] ?? s.notes ?? ""}
-                      onChange={(e) => setNotes((n) => ({ ...n, [s.id]: e.target.value }))}
-                      placeholder="Assessment of case series, biological plausibility, labelling status…"
-                    />
-                  </div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button className="btn" onClick={() => void decide(s.id, "Under Validation")}>
-                      Mark under validation
-                    </button>
-                    <button className="btn teal" onClick={() => void decide(s.id, "Confirmed")}>
-                      Confirm signal
-                    </button>
-                    <button className="btn" onClick={() => void decide(s.id, "Refuted")}>
-                      Refute
-                    </button>
-                  </div>
-                </>
-              )}
-              {s.notes && <div className="perm-note">{s.notes}</div>}
-            </div>
-          ))
         )}
       </div>
 
