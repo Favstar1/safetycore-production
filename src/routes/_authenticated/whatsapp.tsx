@@ -32,6 +32,54 @@ export const Route = createFileRoute("/_authenticated/whatsapp")({
 
 const SERIOUS_KEYWORDS = ["breathing", "swelling", "hospital", "death", "unconscious", "bleeding"];
 
+type Simulation = {
+  name: string;
+  reporterType: string;
+  product: string;
+  term: string;
+  serious: boolean;
+  messages: string[];
+};
+
+const SIMULATIONS: Simulation[] = [
+  {
+    name: "Kemi T.",
+    reporterType: "Healthcare Professional",
+    product: "Astymin Forte",
+    term: "Angioedema",
+    serious: true,
+    messages: [
+      "Good afternoon, I am a nurse at a clinic in Ikeja.",
+      "A patient took Astymin Forte yesterday and now has swelling of the face and difficulty breathing.",
+      "We referred her to the hospital this morning.",
+    ],
+  },
+  {
+    name: "Uche N.",
+    reporterType: "Patient / Consumer",
+    product: "Fidson Paracetamol 500mg",
+    term: "Rash",
+    serious: false,
+    messages: [
+      "Hello, I bought paracetamol from a pharmacy last week.",
+      "After two tablets I developed an itchy rash on my arms.",
+      "It has not gone away, should I stop taking it?",
+    ],
+  },
+  {
+    name: "Dr. Bello A.",
+    reporterType: "Healthcare Professional",
+    product: "Gastromet",
+    term: "Nausea",
+    serious: false,
+    messages: [
+      "Reporting on behalf of a 42 year old male patient, initials B.A.",
+      "He started Gastromet three days ago and complains of persistent nausea and dizziness.",
+      "No hospitalisation, symptoms ongoing.",
+    ],
+  },
+];
+
 function relTime(iso?: string | null) {
   if (!iso) return "";
   const d = new Date(iso);
@@ -382,6 +430,69 @@ function WhatsAppPage() {
     navigate({ to: "/cases/$caseId", params: { caseId: data.id } });
   }
 
+  async function createSimulation() {
+    if (!session || busy) return;
+    setBusy(true);
+    const sim = SIMULATIONS[Math.floor(Math.random() * SIMULATIONS.length)]!;
+    const suffix = Math.floor(1000 + Math.random() * 9000).toString();
+    const contact = `+23480${suffix}${suffix.slice(0, 3)}`;
+    const { data: thread, error } = await supabase
+      .from("whatsapp_threads")
+      .insert({
+        org_id: session.orgId,
+        thread_ref: `WA-SIM-${suffix}`,
+        contact,
+        contact_name: `${sim.name} (simulated)`,
+        reporter_type: sim.reporterType,
+        status: "New",
+        consent: false,
+      })
+      .select("id, thread_ref")
+      .single();
+
+    if (error || !thread) {
+      setBusy(false);
+      return flash(error?.message ?? "Could not create simulation");
+    }
+
+    const base = Date.now() - sim.messages.length * 60_000;
+    await supabase.from("whatsapp_messages").insert(
+      sim.messages.map((body, i) => ({
+        thread_id: thread.id,
+        org_id: session.orgId,
+        direction: "in",
+        body,
+        sender: sim.name,
+        sent_at: new Date(base + i * 60_000).toISOString(),
+        delivery_status: "received",
+      })),
+    );
+
+    await supabase.from("whatsapp_extracts").insert({
+      thread_id: thread.id,
+      org_id: session.orgId,
+      product_name: sim.product,
+      meddra_term: sim.term,
+      serious_flag: sim.serious,
+      serious_flag_reason: sim.serious ? "Triage keyword detected in simulated conversation" : null,
+      narrative: sim.messages.join(" "),
+    });
+
+    await logAudit({
+      orgId: session.orgId,
+      entity: "whatsapp_thread",
+      entityId: thread.id,
+      action: `Simulated WhatsApp intake thread ${thread.thread_ref} created for training/testing`,
+      actorId: session.userId,
+      actorName: session.fullName,
+    });
+
+    await queryClient.invalidateQueries();
+    setActiveId(thread.id);
+    setBusy(false);
+    flash(`Simulation ${thread.thread_ref} created`);
+  }
+
   return (
     <AppShell
       title="WhatsApp Intake"
@@ -403,6 +514,14 @@ function WhatsAppPage() {
               {config?.configured ? "WhatsApp connected" : "WhatsApp not configured"}
             </span>
           </div>
+          <button
+            type="button"
+            className="btn btn-secondary wa-sim-btn"
+            disabled={busy || !session}
+            onClick={() => void createSimulation()}
+          >
+            + New simulation
+          </button>
           <div className="wa-list">
             {(threads ?? []).map((t) => {
               const last = (allMessages ?? []).filter((m) => m.thread_id === t.id).slice(-1)[0];
