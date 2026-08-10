@@ -216,7 +216,7 @@ export function AppShell({
                   </span>
                 </div>
                 <button className="btn switch-user" onClick={signOut}>
-                  Switch user
+                  Sign out
                 </button>
               </div>
             )}
