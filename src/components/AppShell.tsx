@@ -43,7 +43,7 @@ function GlobalSearch() {
     <div className="search-wrap">
       <input
         className="search-input"
-        placeholder="Search cases…"
+        placeholder="Search cases (ID, product, term)…"
         value={term}
         onChange={(e) => setTerm(e.target.value)}
         aria-label="Search cases"
