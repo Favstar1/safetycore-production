@@ -20,7 +20,6 @@ const NAV: NavItem[] = [
   { to: "/signals", label: "Signal Detection", roles: ["PV_COORDINATOR", "PV_MANAGER", "ADMIN"] },
   { to: "/reports", label: "Aggregate Reports", roles: ["PV_COORDINATOR", "PV_MANAGER", "ADMIN"] },
   { to: "/qms", label: "QMS / SOP Log" },
-  { to: "/admin", label: "Administration", roles: ["ADMIN"] },
 ];
 
 function GlobalSearch() {

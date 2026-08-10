@@ -25,7 +25,6 @@ const DEMO = [
   { name: "Field Associate", email: "field.rep@fidson.com", tag: "Field" },
   { name: "PV Coordinator", email: "pv.coordinator@fidson.com", tag: "Coordinator" },
   { name: "PV Manager", email: "pv.manager@fidson.com", tag: "Manager" },
-  { name: "Admin", email: "admin@fidson.com", tag: "Admin" },
 ];
 
 function AuthPage() {
