@@ -880,7 +880,11 @@ export type Database = {
           narrative: string | null
           org_id: string
           product_name: string | null
+          reviewer_decided_at: string | null
+          reviewer_decided_by: string | null
+          reviewer_seriousness: string | null
           serious_flag: boolean
+          serious_flag_reason: string | null
           thread_id: string
         }
         Insert: {
@@ -891,7 +895,11 @@ export type Database = {
           narrative?: string | null
           org_id: string
           product_name?: string | null
+          reviewer_decided_at?: string | null
+          reviewer_decided_by?: string | null
+          reviewer_seriousness?: string | null
           serious_flag?: boolean
+          serious_flag_reason?: string | null
           thread_id: string
         }
         Update: {
@@ -902,7 +910,11 @@ export type Database = {
           narrative?: string | null
           org_id?: string
           product_name?: string | null
+          reviewer_decided_at?: string | null
+          reviewer_decided_by?: string | null
+          reviewer_seriousness?: string | null
           serious_flag?: boolean
+          serious_flag_reason?: string | null
           thread_id?: string
         }
         Relationships: [
@@ -911,6 +923,13 @@ export type Database = {
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_extracts_reviewer_decided_by_fkey"
+            columns: ["reviewer_decided_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
@@ -925,7 +944,10 @@ export type Database = {
       whatsapp_messages: {
         Row: {
           body: string
+          delivery_status: string
           direction: string
+          external_message_id: string | null
+          failure_reason: string | null
           id: string
           org_id: string
           sender: string | null
@@ -934,7 +956,10 @@ export type Database = {
         }
         Insert: {
           body: string
+          delivery_status?: string
           direction: string
+          external_message_id?: string | null
+          failure_reason?: string | null
           id?: string
           org_id: string
           sender?: string | null
@@ -943,7 +968,10 @@ export type Database = {
         }
         Update: {
           body?: string
+          delivery_status?: string
           direction?: string
+          external_message_id?: string | null
+          failure_reason?: string | null
           id?: string
           org_id?: string
           sender?: string | null
@@ -973,10 +1001,13 @@ export type Database = {
           contact: string
           contact_name: string
           created_at: string
+          criteria_confirmed_at: string | null
+          criteria_confirmed_by: string | null
           criteria_event: boolean
           criteria_patient: boolean
           criteria_product: boolean
           criteria_reporter: boolean
+          external_thread_id: string | null
           id: string
           linked_case_id: string | null
           org_id: string
@@ -990,10 +1021,13 @@ export type Database = {
           contact: string
           contact_name: string
           created_at?: string
+          criteria_confirmed_at?: string | null
+          criteria_confirmed_by?: string | null
           criteria_event?: boolean
           criteria_patient?: boolean
           criteria_product?: boolean
           criteria_reporter?: boolean
+          external_thread_id?: string | null
           id?: string
           linked_case_id?: string | null
           org_id: string
@@ -1007,10 +1041,13 @@ export type Database = {
           contact?: string
           contact_name?: string
           created_at?: string
+          criteria_confirmed_at?: string | null
+          criteria_confirmed_by?: string | null
           criteria_event?: boolean
           criteria_patient?: boolean
           criteria_product?: boolean
           criteria_reporter?: boolean
+          external_thread_id?: string | null
           id?: string
           linked_case_id?: string | null
           org_id?: string
@@ -1020,6 +1057,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "whatsapp_threads_criteria_confirmed_by_fkey"
+            columns: ["criteria_confirmed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "whatsapp_threads_linked_case_id_fkey"
             columns: ["linked_case_id"]
