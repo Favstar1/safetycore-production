@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import logoAsset from "@/assets/mednova-logo.png.asset.json";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -63,8 +64,7 @@ function Landing() {
       <header className="mk-header">
         <div className="mk-wrap" style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
           <div className="brand" style={{ padding: 0 }}>
-            <span className="brand-mark">MN</span>
-            <span className="brand-name">MedNova Lifesciences</span>
+            <img src={logoAsset.url} alt="MedNova Lifesciences" className="brand-logo" />
           </div>
           <Link to="/auth" className="btn">
             Sign in

@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import logoAsset from "@/assets/mednova-logo.png.asset.json";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
@@ -61,7 +62,7 @@ function AuthPage() {
     <div className="signin-overlay">
       <div className="signin-card">
         <div className="signin-brand">
-          <span className="brand-mark">SC</span>
+          <img src={logoAsset.url} alt="MedNova Lifesciences" className="brand-logo" />
           <span className="brand-name">SafetyCore</span>
         </div>
         <h2>Sign in to continue</h2>

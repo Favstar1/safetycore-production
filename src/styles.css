@@ -134,10 +134,16 @@
 }
 .brand {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
   padding: 6px 8px 22px;
 }
+.brand-logo {
+  height: 26px;
+  width: auto;
+  display: block;
+}
+
 .brand-mark {
   font-family: "IBM Plex Mono", monospace;
   font-size: 11px;

@@ -5,6 +5,7 @@ import { Bell } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession } from "@/hooks/useSession";
 import { ROLE_LABEL, fmtDateTime, initialsOf, type AppRole } from "@/lib/pv";
+import logoAsset from "@/assets/mednova-logo.png.asset.json";
 
 type NavItem = { to: string; label: string; roles?: AppRole[] };
 
@@ -173,7 +174,7 @@ export function AppShell({
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand-mark">MN</span>
+          <img src={logoAsset.url} alt="MedNova Lifesciences" className="brand-logo" />
           <span className="brand-name">SafetyCore</span>
         </div>
         
