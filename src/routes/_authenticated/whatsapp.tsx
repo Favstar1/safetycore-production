@@ -555,9 +555,7 @@ function WhatsAppPage() {
         <div>
           <div className="wa-inbox-head">
             <h3>Inbox</h3>
-            <span className={`wa-status ${config?.configured ? "converted" : "new"}`}>
-              {config?.configured ? "WhatsApp connected" : "WhatsApp not configured"}
-            </span>
+            <span className="wa-status new">Demo channel</span>
           </div>
           <button
             type="button"
