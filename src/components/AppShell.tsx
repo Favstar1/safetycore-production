@@ -12,11 +12,13 @@ type NavItem = { to: string; label: string; roles?: AppRole[] };
 const NAV: NavItem[] = [
   { to: "/dashboard", label: "Dashboard" },
   { to: "/cases", label: "Case Workbench" },
-  { to: "/intake", label: "New ICSR Intake" },
+  { to: "/intake", label: "New ICSR Intake", roles: ["FIELD_ASSOCIATE", "PV_COORDINATOR", "ADMIN"] },
   {
     to: "/whatsapp",
     label: "WhatsApp Intake",
+    roles: ["FIELD_ASSOCIATE", "PV_COORDINATOR", "ADMIN"],
   },
+
 
   { to: "/signals", label: "Signal Detection", roles: ["PV_COORDINATOR", "PV_MANAGER", "ADMIN"] },
   { to: "/reports", label: "Aggregate Reports", roles: ["PV_COORDINATOR", "PV_MANAGER", "ADMIN"] },
