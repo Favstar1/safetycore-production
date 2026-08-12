@@ -196,10 +196,13 @@ function Dashboard() {
             : "Your case queue, today's actions, and regulatory deadlines."
       }
       actions={
-        <Link to="/intake" className="btn primary">
-          + New ICSR Case
-        </Link>
+        isManager ? undefined : (
+          <Link to="/intake" className="btn primary">
+            + New ICSR Case
+          </Link>
+        )
       }
+
     >
       {isCoordinator ? (
         <div className="kpi-grid">
