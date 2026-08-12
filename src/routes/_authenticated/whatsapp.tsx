@@ -1,13 +1,14 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
-import { getWhatsAppConfig, sendWhatsAppMessage } from "@/lib/whatsapp.functions";
 import { AppShell } from "@/components/AppShell";
 import { useSession } from "@/hooks/useSession";
 import { logAudit } from "@/lib/audit";
 import { MIN_CRITERIA, SOC_MAP } from "@/lib/pv";
+
+/** Demo patient details the simulated reporter replies with. */
+const DEMO_PATIENT = { initials: "A.O.", age: 12, sex: "F" };
 
 export const Route = createFileRoute("/_authenticated/whatsapp")({
   head: () => ({
