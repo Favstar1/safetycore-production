@@ -589,9 +589,7 @@ function WhatsAppPage() {
             })}
             {(threads ?? []).length === 0 && (
               <div className="empty">
-                {config?.configured
-                  ? "No inbound threads yet."
-                  : "No inbound threads. Connect the WhatsApp Business Platform (access token, phone number ID, webhook verify token and app secret) to start receiving reports."}
+                No threads yet — use “+ New simulation” to create a demo WhatsApp report.
               </div>
             )}
           </div>
