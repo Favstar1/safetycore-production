@@ -100,12 +100,8 @@ function WhatsAppPage() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const sendWa = useServerFn(sendWhatsAppMessage);
-  const waConfig = useServerFn(getWhatsAppConfig);
-  const { data: config } = useQuery({
-    queryKey: ["wa-config"],
-    queryFn: () => waConfig({}),
-  });
+
+
 
   const { data: threads } = useQuery({
     queryKey: ["wa-threads"],
