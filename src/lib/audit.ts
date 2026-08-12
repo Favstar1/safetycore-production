@@ -31,7 +31,7 @@ export async function logQms(params: {
   entryType?: string;
   reference?: string | undefined;
 }) {
-  await supabase.from("qms_entries").insert({
+  const { error } = await supabase.from("qms_entries").insert({
     org_id: params.orgId,
     entry_type: params.entryType ?? "System",
     event: params.event,
@@ -39,6 +39,7 @@ export async function logQms(params: {
     actor_id: params.actorId,
     actor_name: params.actorName,
   });
+  if (error) throw error;
 }
 
 export async function notify(params: {
