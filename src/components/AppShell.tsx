@@ -16,8 +16,8 @@ const NAV: NavItem[] = [
   {
     to: "/whatsapp",
     label: "WhatsApp Intake",
-    roles: ["PV_COORDINATOR", "PV_MANAGER", "ADMIN"],
   },
+
   { to: "/signals", label: "Signal Detection", roles: ["PV_COORDINATOR", "PV_MANAGER", "ADMIN"] },
   { to: "/reports", label: "Aggregate Reports", roles: ["PV_COORDINATOR", "PV_MANAGER", "ADMIN"] },
   { to: "/qms", label: "QMS / SOP Log" },
