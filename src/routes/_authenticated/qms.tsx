@@ -73,19 +73,23 @@ function QmsPage() {
           disabled={!event.trim()}
           onClick={async () => {
             if (!session) return;
-            await logQms({
-              orgId: session.orgId,
-              entryType,
-              event: event.trim(),
-              reference: reference.trim() || undefined,
-              actorId: session.userId,
-              actorName: session.fullName,
-            });
-            setEvent("");
-            setReference("");
-            queryClient.invalidateQueries({ queryKey: ["qms"] });
-            setToast("Quality event recorded");
-            setTimeout(() => setToast(null), 2600);
+            try {
+              await logQms({
+                orgId: session.orgId,
+                entryType,
+                event: event.trim(),
+                reference: reference.trim() || undefined,
+                actorId: session.userId,
+                actorName: session.fullName,
+              });
+              setEvent("");
+              setReference("");
+              await queryClient.invalidateQueries({ queryKey: ["qms"] });
+              setToast("Quality event recorded");
+            } catch (err) {
+              setToast(`Could not record entry: ${(err as Error).message}`);
+            }
+            setTimeout(() => setToast(null), 3200);
           }}
         >
           Record entry
