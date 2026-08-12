@@ -423,6 +423,18 @@ function WhatsAppPage() {
     const due = new Date(received);
     due.setDate(due.getDate() + (serious ? 15 : 90));
 
+    // Patient details as stated by the reporter in the conversation.
+    const convo = messages.map((m) => m.body).join(" ");
+    const ageMatch = convo.match(/age\s*(\d{1,3})|(\d{1,3})\s*year/i);
+    const initialsMatch = convo.match(/initials\s*([A-Z]\.?\s?[A-Z]\.?)/i);
+    const patient = {
+      initials: initialsMatch?.[1]?.replace(/\s/g, "") ?? DEMO_PATIENT.initials,
+      age: Number(ageMatch?.[1] ?? ageMatch?.[2] ?? DEMO_PATIENT.age),
+      sex: /female|\bwoman\b|\bher\b/i.test(convo) ? "F" : /\bmale\b|\bman\b|\bhis\b/i.test(convo) ? "M" : DEMO_PATIENT.sex,
+    };
+
+
+
     const { data, error } = await supabase
       .from("cases")
       .insert({
