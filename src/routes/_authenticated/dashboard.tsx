@@ -246,14 +246,25 @@ function Dashboard() {
             <div className="foot">to regulatory gateway(s)</div>
           </div>
           <div className="kpi">
-            <div className="label">{isManager ? "Signals active" : "Serious cases"}</div>
+            <div className="label">
+              {isManager ? "Signals active" : isField ? "WhatsApp awaiting review" : "Serious cases"}
+            </div>
             <div className="num">
-              {isManager ? activeSignals : rows.filter((c) => c.seriousness === "Serious").length}
+              {isManager
+                ? activeSignals
+                : isField
+                  ? waAwaiting
+                  : rows.filter((c) => c.seriousness === "Serious").length}
             </div>
             <div className="foot">
-              {isManager ? "new / under validation" : "15-day expedited clock"}
+              {isManager
+                ? "new / under validation"
+                : isField
+                  ? "new inbound reports"
+                  : "15-day expedited clock"}
             </div>
           </div>
+
         </div>
       )}
 
