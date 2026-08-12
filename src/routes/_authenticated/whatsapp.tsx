@@ -1,13 +1,14 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
-import { getWhatsAppConfig, sendWhatsAppMessage } from "@/lib/whatsapp.functions";
 import { AppShell } from "@/components/AppShell";
 import { useSession } from "@/hooks/useSession";
 import { logAudit } from "@/lib/audit";
 import { MIN_CRITERIA, SOC_MAP } from "@/lib/pv";
+
+/** Demo patient details the simulated reporter replies with. */
+const DEMO_PATIENT = { initials: "A.O.", age: 12, sex: "F" };
 
 export const Route = createFileRoute("/_authenticated/whatsapp")({
   head: () => ({
@@ -99,12 +100,8 @@ function WhatsAppPage() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const sendWa = useServerFn(sendWhatsAppMessage);
-  const waConfig = useServerFn(getWhatsAppConfig);
-  const { data: config } = useQuery({
-    queryKey: ["wa-config"],
-    queryFn: () => waConfig({}),
-  });
+
+
 
   const { data: threads } = useQuery({
     queryKey: ["wa-threads"],
@@ -163,17 +160,34 @@ function WhatsAppPage() {
       SERIOUS_KEYWORDS.some((k) => m.body.toLowerCase().includes(k)),
     ) || !!extract?.serious_flag;
 
-  async function sendOutbound(body: string) {
-    if (!active) return null;
-    const res = await sendWa({ data: { threadId: active.id, body } });
-    return res;
-  }
-
-  function deliveryNote(res: { deliveryStatus: string } | null, fallback: string) {
-    if (!res) return fallback;
-    if (res.deliveryStatus === "sent") return `${fallback} — delivered via WhatsApp`;
-    if (res.deliveryStatus === "failed") return `${fallback} — WhatsApp delivery failed, see thread`;
-    return `${fallback} — queued (WhatsApp Business Platform not configured)`;
+  /** Demo channel — the outbound message and the reporter's reply are recorded on the thread. */
+  async function sendDemo(outbound: string, replies: string[]) {
+    if (!session || !active) return;
+    const now = Date.now();
+    await supabase.from("whatsapp_messages").insert([
+      {
+        thread_id: active.id,
+        org_id: session.orgId,
+        direction: "out",
+        body: outbound,
+        sender: session.fullName,
+        sent_at: new Date(now).toISOString(),
+        delivery_status: "sent",
+      },
+      ...replies.map((body, i) => ({
+        thread_id: active.id,
+        org_id: session.orgId,
+        direction: "in",
+        body,
+        sender: active.contact_name ?? active.contact,
+        sent_at: new Date(now + (i + 1) * 2000).toISOString(),
+        delivery_status: "received",
+      })),
+    ]);
+    await supabase
+      .from("whatsapp_threads")
+      .update({ updated_at: new Date().toISOString() })
+      .eq("id", active.id);
   }
 
   async function requestMissingInfo() {
@@ -186,14 +200,37 @@ function WhatsAppPage() {
       criteria_product: "the exact medicine name, strength and batch number",
       criteria_event: "what reaction was experienced and when it started",
     };
+    const answers: Record<string, string> = {
+      criteria_reporter: `My name is ${active.contact_name ?? "the reporter"}, you can reach me on ${active.contact}.`,
+      criteria_patient: `Patient initials ${DEMO_PATIENT.initials}, age ${DEMO_PATIENT.age}, female.`,
+      criteria_product: `It was ${extract?.product_name ?? "the product"}, batch B-2291, bought from a registered pharmacy.`,
+      criteria_event: `${extract?.meddra_term ?? "The reaction"} started two days after the first dose and is still ongoing.`,
+    };
     const body =
       missing.length === 0
         ? "Thank you. Could you share any additional detail on the reaction (dates, outcome, treatment given)?"
         : `Thank you for the report. To register this safety report we still need: ${missing
             .map((m) => asks[m.key])
             .join("; ")}. Please reply with these details.`;
+    const replies =
+      missing.length === 0
+        ? ["The reaction started on the second day and settled after the product was stopped. No treatment was given."]
+        : missing.map((m) => answers[m.key]!);
     try {
-      const res = await sendOutbound(body);
+      await sendDemo(body, replies);
+      if (missing.length > 0) {
+        await supabase
+          .from("whatsapp_threads")
+          .update({
+            criteria_reporter: true,
+            criteria_patient: true,
+            criteria_product: true,
+            criteria_event: true,
+            criteria_confirmed_at: null,
+            criteria_confirmed_by: null,
+          })
+          .eq("id", active.id);
+      }
       await logAudit({
         orgId: session.orgId,
         entity: "whatsapp_thread",
@@ -208,7 +245,7 @@ function WhatsAppPage() {
         actorName: session.fullName,
       });
       await queryClient.invalidateQueries();
-      flash(deliveryNote(res, "Information request recorded"));
+      flash("Information request sent — reporter replied");
     } catch (e) {
       flash(e instanceof Error ? e.message : "Could not send request");
     }
@@ -219,21 +256,29 @@ function WhatsAppPage() {
     if (!session || !active || busy) return;
     setBusy(true);
     try {
-      const res = await sendOutbound(
+      await sendDemo(
         active.consent
           ? "Noting that you have already consented to your data being used for safety monitoring. Thank you."
           : "Before we can record this report we need your permission to process your information for drug safety monitoring, in line with the NDPR. Do you consent?",
+        [
+          active.consent
+            ? "Yes, that is fine."
+            : "Yes, I consent to my information being used for drug safety monitoring.",
+        ],
       );
+      if (!active.consent) {
+        await supabase.from("whatsapp_threads").update({ consent: true }).eq("id", active.id);
+      }
       await logAudit({
         orgId: session.orgId,
         entity: "whatsapp_thread",
         entityId: active.id,
-        action: `NDPR data-use consent requested on thread ${active.thread_ref}`,
+        action: `NDPR data-use consent requested and confirmed by reporter on thread ${active.thread_ref}`,
         actorId: session.userId,
         actorName: session.fullName,
       });
       await queryClient.invalidateQueries();
-      flash(deliveryNote(res, "Consent request recorded"));
+      flash("Consent request sent — reporter consented");
     } catch (e) {
       flash(e instanceof Error ? e.message : "Could not send consent request");
     }
@@ -378,6 +423,18 @@ function WhatsAppPage() {
     const due = new Date(received);
     due.setDate(due.getDate() + (serious ? 15 : 90));
 
+    // Patient details as stated by the reporter in the conversation.
+    const convo = messages.map((m) => m.body).join(" ");
+    const ageMatch = convo.match(/age\s*(\d{1,3})|(\d{1,3})\s*year/i);
+    const initialsMatch = convo.match(/initials\s*([A-Z]\.?\s?[A-Z]\.?)/i);
+    const patient = {
+      initials: initialsMatch?.[1]?.replace(/\s/g, "") ?? DEMO_PATIENT.initials,
+      age: Number(ageMatch?.[1] ?? ageMatch?.[2] ?? DEMO_PATIENT.age),
+      sex: /female|\bwoman\b|\bher\b/i.test(convo) ? "F" : /\bmale\b|\bman\b|\bhis\b/i.test(convo) ? "M" : DEMO_PATIENT.sex,
+    };
+
+
+
     const { data, error } = await supabase
       .from("cases")
       .insert({
@@ -388,7 +445,10 @@ function WhatsAppPage() {
         reporter_type: active.reporter_type ?? "Patient / Consumer",
         reporter_name: active.contact_name,
         reporter_contact: active.contact,
-        patient_initials: null,
+        patient_initials: patient.initials,
+        patient_age: patient.age,
+        patient_sex: patient.sex,
+        event_description: extract?.meddra_term ?? null,
         product_name: extract?.product_name ?? "Unknown",
         meddra_term: extract?.meddra_term ?? null,
         meddra_soc: extract?.meddra_term ? (SOC_MAP[extract.meddra_term] ?? null) : null,
@@ -510,9 +570,7 @@ function WhatsAppPage() {
         <div>
           <div className="wa-inbox-head">
             <h3>Inbox</h3>
-            <span className={`wa-status ${config?.configured ? "converted" : "new"}`}>
-              {config?.configured ? "WhatsApp connected" : "WhatsApp not configured"}
-            </span>
+            <span className="wa-status new">Demo channel</span>
           </div>
           <button
             type="button"
@@ -546,9 +604,7 @@ function WhatsAppPage() {
             })}
             {(threads ?? []).length === 0 && (
               <div className="empty">
-                {config?.configured
-                  ? "No inbound threads yet."
-                  : "No inbound threads. Connect the WhatsApp Business Platform (access token, phone number ID, webhook verify token and app secret) to start receiving reports."}
+                No threads yet — use “+ New simulation” to create a demo WhatsApp report.
               </div>
             )}
           </div>
